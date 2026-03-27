@@ -1,7 +1,7 @@
-# ClawManager-OpenClaw-Image
+# ClawManager OpenClaw Image
 
 <p align="center">
-  <img src="docs/openclaw_logo.jpg" alt="ClawManager" width="100%" />
+  <img src="docs//assets/openclaw_logo.jpg" alt="ClawManager" width="100%" />
 </p>
 
 <p align="center">
@@ -14,7 +14,6 @@
 
 **推荐优先使用 `Dockerfile.openclaw` 一键构建。** 若需在 WebTop 桌面内手动安装组件后再执行 `docker commit`，请见下文 **进阶：基础流程（手动 / docker commit）**。
 
----
 
 ## 项目概览
 

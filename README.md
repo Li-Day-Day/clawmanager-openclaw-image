@@ -1,7 +1,7 @@
 # ClawManager OpenClaw Image
 
 <p align="center">
-  <img src="docs/assets/openclaw_logo.jpg" alt="ClawManager" width="100%" />
+  <img src="docs//assets/openclaw_logo.jpg" alt="ClawManager" width="100%" />
 </p>
 
 <p align="center">
