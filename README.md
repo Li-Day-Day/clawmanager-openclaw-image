@@ -1,7 +1,7 @@
-# ClawManager-OpenClaw-Image
+# ClawManager OpenClaw Image
 
 <p align="center">
-  <img src="docs/openclaw_logo.jpg" alt="ClawManager" width="100%" />
+  <img src="docs/assets/openclaw_logo.jpg" alt="ClawManager" width="100%" />
 </p>
 
 <p align="center">
@@ -14,7 +14,6 @@ This guide helps you build an **OpenClaw** base image for the **ClawManager** co
 
 **Prefer `Dockerfile.openclaw` for a one-shot build.** If you need to install components manually inside the WebTop desktop and then `docker commit`, see **Advanced: manual flow** below.
 
----
 
 ## Project overview
 
