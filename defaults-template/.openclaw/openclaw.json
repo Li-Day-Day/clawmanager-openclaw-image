@@ -93,7 +93,7 @@
         ]
       },
       "auth": {
-        "mode": "token",
+        "mode": "none",
         "token": "xxxxxx"
       },
       "tailscale": {
