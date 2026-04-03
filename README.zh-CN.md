@@ -72,6 +72,7 @@ docker run -d \
 | `CLAWMANAGER_LLM_BASE_URL` | `models.providers.auto.baseUrl`        | 网关或上游 Base URL                                                       |
 | `CLAWMANAGER_LLM_API_KEY`  | `apiKey`                               | 模型 API 密钥                                                             |
 | `CLAWMANAGER_LLM_MODEL`    | `primary` / `agents.defaults.models` | 模型 ID 替换；`auto/` 的处理与 `99-openclaw-sync` 中 `sed` 逻辑一致 |
+| `CLAWMANAGER_OPENCLAW_CHANNELS_JSON` | `channels`（合并）                     | JSON 对象，可含一个或多个通道键（`feishu`、`slack` 等）；与已有 `channels` 做浅合并；解析失败时容器初始化失败 |
 
 ---
 
@@ -98,6 +99,7 @@ docker run -d \
   -e CLAWMANAGER_LLM_BASE_URL=https://your-gateway/v1 \
   -e CLAWMANAGER_LLM_API_KEY=your-sk-key \
   -e CLAWMANAGER_LLM_MODEL=gpt-4o \
+  -e CLAWMANAGER_OPENCLAW_CHANNELS_JSON='{"feishu":{"enabled":true,"accounts":{"main":{"appId":"cli_xxx","appSecret":"your-secret"}}}}' \
   -p 3000:3000 -p 3001:3001 \
   ghcr.io/<github_user>/<repo>:latest
 ```
