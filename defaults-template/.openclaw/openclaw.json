@@ -82,6 +82,7 @@
     "session": {
       "dmScope": "per-channel-peer"
     },
+    "channels": {},
     "gateway": {
       "port": 18789,
       "mode": "local",

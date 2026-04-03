@@ -57,6 +57,41 @@ if [ -n "$CLAWMANAGER_LLM_MODEL" ]; then
     sed -i "s@\"auto/[^\"]*\":[[:space:]]*{}@\"auto/$CLAWMANAGER_LLM_MODEL\": {}@g" "$CONFIG_FILE"
 fi
 
+# --- Channels (JSON object: feishu / slack / telegram / ... merged into channels) ---
+if [ -n "$CLAWMANAGER_OPENCLAW_CHANNELS_JSON" ]; then
+    echo "-> Injecting channel config..."
+    export OPENCLAW_CONFIG_FILE="$CONFIG_FILE"
+    node <<'NODE'
+const fs = require('fs');
+const path = process.env.OPENCLAW_CONFIG_FILE;
+const raw = process.env.CLAWMANAGER_OPENCLAW_CHANNELS_JSON;
+let parsed;
+try {
+  parsed = JSON.parse(raw);
+} catch (e) {
+  console.error('[OpenClaw] CLAWMANAGER_OPENCLAW_CHANNELS_JSON is not valid JSON:', e.message);
+  process.exit(1);
+}
+if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+  console.error('[OpenClaw] CLAWMANAGER_OPENCLAW_CHANNELS_JSON must be a JSON object.');
+  process.exit(1);
+}
+let cfg;
+try {
+  cfg = JSON.parse(fs.readFileSync(path, 'utf8'));
+} catch (e) {
+  console.error('[OpenClaw] Failed to read config:', e.message);
+  process.exit(1);
+}
+if (!cfg.channels) cfg.channels = {};
+Object.assign(cfg.channels, parsed);
+const tmp = path + '.tmp.' + process.pid;
+const out = JSON.stringify(cfg, null, 4) + '\n';
+fs.writeFileSync(tmp, out, 'utf8');
+fs.renameSync(tmp, path);
+NODE
+fi
+
 # 3. Final Permissions Check
 chown -R abc:abc /config/.openclaw
 echo "[OpenClaw] All tasks completed."

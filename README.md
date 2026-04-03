@@ -72,6 +72,7 @@ Set these in ClawManager or `docker run` to inject into `openclaw.json`:
 | `CLAWMANAGER_LLM_BASE_URL` | `models.providers.auto.baseUrl`        | Gateway or upstream base URL                                                              |
 | `CLAWMANAGER_LLM_API_KEY`  | `apiKey`                               | Model API key                                                                             |
 | `CLAWMANAGER_LLM_MODEL`    | `primary` / `agents.defaults.models` | Model id replacement;`auto/` handling matches the `sed` logic in `99-openclaw-sync` |
+| `CLAWMANAGER_OPENCLAW_CHANNELS_JSON` | `channels` (merge)                     | JSON object with one or more channel keys (`feishu`, `slack`, …); shallow-merge into `channels`; invalid JSON aborts startup |
 
 ---
 
@@ -98,6 +99,7 @@ docker run -d \
   -e CLAWMANAGER_LLM_BASE_URL=https://your-gateway/v1 \
   -e CLAWMANAGER_LLM_API_KEY=your-sk-key \
   -e CLAWMANAGER_LLM_MODEL=gpt-4o \
+  -e CLAWMANAGER_OPENCLAW_CHANNELS_JSON='{"feishu":{"enabled":true,"accounts":{"main":{"appId":"cli_xxx","appSecret":"your-secret"}}}}' \
   -p 3000:3000 -p 3001:3001 \
   ghcr.io/<github_user>/<repo>:latest
 ```
