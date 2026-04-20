@@ -47,7 +47,7 @@ func (m *Manager) ApplyRevision(ctx context.Context, revisionID string) (map[str
 	if err := validateJSON(content); err != nil {
 		return nil, err
 	}
-	content, err = normalizeConfigContent(content)
+	content, _, err = normalizeConfigMap(content, m.cfg)
 	if err != nil {
 		return nil, err
 	}

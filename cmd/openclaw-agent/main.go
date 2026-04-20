@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/iamlovingit/clawmanager-openclaw-image/internal/bootstrap"
 	appconfig "github.com/iamlovingit/clawmanager-openclaw-image/internal/config"
 	"github.com/iamlovingit/clawmanager-openclaw-image/internal/supervisor"
 )
@@ -14,6 +15,10 @@ func main() {
 	cfg, err := appconfig.Load()
 	if err != nil {
 		log.Fatalf("load config: %v", err)
+	}
+
+	if err := bootstrap.Run(cfg); err != nil {
+		log.Fatalf("bootstrap: %v", err)
 	}
 
 	s, err := supervisor.New(cfg)

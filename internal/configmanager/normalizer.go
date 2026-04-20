@@ -6,12 +6,17 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	appconfig "github.com/iamlovingit/clawmanager-openclaw-image/internal/config"
 )
 
 const autoProviderName = "auto"
 
+// NormalizeActiveConfig reads the openclaw config at cfg.OpenClawConfigPath,
+// applies both the LLM environment overrides and the channel/plugins
+// reconciliation, and writes back only if the content actually changed.
 func (m *Manager) NormalizeActiveConfig() error {
-	normalized, changed, err := normalizeConfigFile(m.cfg.OpenClawConfigPath)
+	normalized, changed, err := normalizeConfigFile(m.cfg.OpenClawConfigPath, m.cfg)
 	if err != nil {
 		return err
 	}
@@ -21,36 +26,65 @@ func (m *Manager) NormalizeActiveConfig() error {
 	return os.WriteFile(m.cfg.OpenClawConfigPath, normalized, 0o600)
 }
 
-func normalizeConfigFile(path string) ([]byte, bool, error) {
-	overrides, hasOverrides, err := readLLMOverridesFromEnv()
-	if err != nil || !hasOverrides {
-		return nil, false, err
-	}
-
+func normalizeConfigFile(path string, cfg appconfig.Config) ([]byte, bool, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, false, fmt.Errorf("read openclaw config: %w", err)
 	}
 
-	normalized, err := normalizeLLMConfigContent(content, overrides)
+	normalized, changed, err := normalizeConfigMap(content, cfg)
 	if err != nil {
 		return nil, false, err
 	}
-	if bytes.Equal(content, normalized) {
-		return normalized, false, nil
-	}
-	return normalized, true, nil
+	return normalized, changed, nil
 }
 
-func normalizeConfigContent(content []byte) ([]byte, error) {
-	overrides, hasOverrides, err := readLLMOverridesFromEnv()
+// normalizeConfigMap mutates the in-memory cfg JSON with both LLM
+// overrides (when any are set) and channel/plugins reconciliation (always),
+// then re-encodes the result. The returned bool reports whether the
+// re-encoded bytes differ from the input.
+func normalizeConfigMap(content []byte, cfg appconfig.Config) ([]byte, bool, error) {
+	parsed, err := parseConfigJSON(content)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	if !hasOverrides {
-		return content, nil
+
+	llm, _, err := readLLMOverridesFromEnv()
+	if err != nil {
+		return nil, false, err
 	}
-	return normalizeLLMConfigContent(content, overrides)
+	normalizeLLMConfigContent(parsed, llm)
+
+	channelOpts := readChannelOverridesFromEnv(cfg)
+	if err := applyChannelOverrides(parsed, channelOpts); err != nil {
+		return nil, false, err
+	}
+
+	normalized, err := rewriteConfig(parsed)
+	if err != nil {
+		return nil, false, err
+	}
+	return normalized, !bytes.Equal(content, normalized), nil
+}
+
+func parseConfigJSON(content []byte) (map[string]any, error) {
+	var parsed map[string]any
+	if err := json.Unmarshal(content, &parsed); err != nil {
+		return nil, fmt.Errorf("parse openclaw config: %w", err)
+	}
+	if parsed == nil {
+		parsed = map[string]any{}
+	}
+	return parsed, nil
+}
+
+func rewriteConfig(parsed map[string]any) ([]byte, error) {
+	normalized, err := json.MarshalIndent(parsed, "", "    ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal openclaw config: %w", err)
+	}
+	normalized = append(normalized, '\n')
+	return normalized, nil
 }
 
 type llmOverrides struct {
@@ -74,8 +108,8 @@ func readLLMOverridesFromEnv() (llmOverrides, bool, error) {
 	overrides.BaseURL = firstNonEmptyEnv("CLAWMANAGER_LLM_BASE_URL", "OPENAI_BASE_URL")
 	overrides.APIKey, overrides.APIKeySet = firstLookupEnv("CLAWMANAGER_LLM_API_KEY", "OPENAI_API_KEY")
 
-	hasOverrides := overrides.BaseURL != "" || overrides.APIKeySet || len(overrides.ModelIDs) > 0
-	return overrides, hasOverrides, nil
+	has := overrides.BaseURL != "" || overrides.APIKeySet || len(overrides.ModelIDs) > 0
+	return overrides, has, nil
 }
 
 func parseModelIDs(raw string) ([]string, error) {
@@ -116,15 +150,10 @@ func uniqueNonEmptyModelIDs(values []any) []string {
 	return modelIDs
 }
 
-func normalizeLLMConfigContent(content []byte, overrides llmOverrides) ([]byte, error) {
-	var cfg map[string]any
-	if err := json.Unmarshal(content, &cfg); err != nil {
-		return nil, fmt.Errorf("parse openclaw config: %w", err)
-	}
-	if cfg == nil {
-		cfg = map[string]any{}
-	}
-
+// normalizeLLMConfigContent writes baseUrl / apiKey / models / primary into
+// cfg based on environment-provided overrides. When no overrides exist for
+// a given field, the corresponding subtree is left untouched.
+func normalizeLLMConfigContent(cfg map[string]any, overrides llmOverrides) {
 	models := ensureObject(cfg, "models")
 	providers := ensureObject(models, "providers")
 	autoProvider := ensureObject(providers, autoProviderName)
@@ -144,13 +173,6 @@ func normalizeLLMConfigContent(content []byte, overrides llmOverrides) ([]byte, 
 		model["primary"] = qualifiedModelID(overrides.ModelIDs[0])
 		defaults["models"] = buildAgentModels(defaults["models"], overrides.ModelIDs)
 	}
-
-	normalized, err := json.MarshalIndent(cfg, "", "    ")
-	if err != nil {
-		return nil, fmt.Errorf("marshal openclaw config: %w", err)
-	}
-	normalized = append(normalized, '\n')
-	return normalized, nil
 }
 
 func buildProviderModels(existing any, modelIDs []string) []any {

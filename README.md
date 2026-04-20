@@ -22,14 +22,14 @@ The image now also includes an **OpenClaw Agent** service inside the container. 
 In ClawManager batch scenarios, per-container manual setup does not scale. This project addresses:
 
 * **Pre-installed runtime**: Node.js and the latest OpenClaw CLI, ready to use.
-* **Config sync**: `custom-cont-init.d` so new containers can restore templates from `/defaults` on start.
+* **Agent-driven bootstrap**: `openclaw-agent` (Go) runs as root at container start, seeds `/config/.openclaw` from `/defaults/.openclaw`, reconciles channel plugins, fixes ownership, and drops privileges to `abc` before launching OpenClaw.
 * **Dynamic injection**: Environment variables update `openclaw.json` without editing files in the desktop session.
 
 ---
 
 ## Quick start (recommended)
 
-The image is based on `lscr.io/linuxserver/webtop:ubuntu-xfce`. The Dockerfile installs Node.js and global OpenClaw, seeds `/defaults/.openclaw`, and installs `scripts/99-openclaw-sync` under `/custom-cont-init.d/` (runs on **each container start**, not during `docker build`). Runtime config lives under **`/config/.openclaw`**, not `~/.openclaw`. Look for `[OpenClaw]` lines in the container logs after startup.
+The image is based on `lscr.io/linuxserver/webtop:ubuntu-xfce`. The Dockerfile installs Node.js and global OpenClaw, seeds `/defaults/.openclaw`, and ships the `openclaw-agent` binary as an s6 service. On every container start the agent performs all bootstrap work (defaults sync, extensions directory, XFCE autostart, config normalization, channel reconciliation) and then drops privileges to `abc` before launching `openclaw gateway run`. Runtime config lives under **`/config/.openclaw`**, not `~/.openclaw`. Look for `openclaw-agent` lines in the container logs after startup.
 
 ### Build
 
@@ -73,7 +73,7 @@ Set these in ClawManager or `docker run` to inject into `openclaw.json`:
 | ---------------------------- | ---------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `CLAWMANAGER_LLM_BASE_URL` | `models.providers.auto.baseUrl`        | Gateway or upstream base URL                                                              |
 | `CLAWMANAGER_LLM_API_KEY`  | `apiKey`                               | Model API key                                                                             |
-| `CLAWMANAGER_LLM_MODEL`    | `primary` / `agents.defaults.models` | Model id replacement;`auto/` handling matches the `sed` logic in `99-openclaw-sync` |
+| `CLAWMANAGER_LLM_MODEL`    | `primary` / `agents.defaults.models` | Model id replacement; supports a single id or a JSON array; handled by the agent's config normalizer |
 | `CLAWMANAGER_OPENCLAW_CHANNELS_JSON` | `channels` (merge)                     | JSON object with one or more channel keys (`feishu`, `slack`, …); shallow-merge into `channels`; invalid JSON aborts startup |
 | `OPENCLAW_AGENT_INSTANCE_ID` | agent bootstrap                         | Required. Unique instance id used during `/api/v1/agent/register` |
 | `OPENCLAW_AGENT_BOOTSTRAP_TOKEN` | agent bootstrap                      | Required. Bootstrap token for agent registration |
@@ -138,7 +138,7 @@ sudo npm install -g openclaw@latest
 ### Init script and cleanup
 
 1. **Seed defaults**: `cp -rp /config/.openclaw /defaults/`.
-2. **Install hook**: place an executable `99-openclaw-sync` under `/custom-cont-init.d/` (you can start from `scripts/99-openclaw-sync` in this repo) to copy from `/defaults` to `/config` and apply env-based edits.
+2. **Install agent**: copy the compiled `openclaw-agent` binary into `/usr/local/bin/` and install `scripts/openclaw-agent-run` / `openclaw-agent-finish` under `/etc/services.d/openclaw-agent/`. The agent performs the `/defaults` → `/config` sync and env-based edits on every start.
 3. **Clean before image save**: `rm -rf /config/.openclaw`. If this step is skipped, new containers may not run first-boot init as expected.
 
 ### Save image
@@ -153,9 +153,8 @@ docker commit webtop-running openclaw:v1.0
 
 ## Notes
 
-* **Line endings**: `99-openclaw-sync` must use **LF**. On Windows, convert line endings or rely on the `sed` step in `Dockerfile.openclaw` to strip `\r`. Rebuild the image after editing the script.
-* **Permissions**: the script runs `chown -R abc:abc` so the default user can read/write persisted config.
-* **Docker Compose**: point `image` at your built tag, or use `build` with `dockerfile: Dockerfile.openclaw`. Do not rely on the stock `webtop` image alone; it will not include this repo’s templates and init script.
+* **Permissions**: the agent runs `chown -R abc:abc` on `/config/.openclaw` and `/config/.config/autostart` before dropping to `abc`, so the default user can read/write persisted config.
+* **Docker Compose**: point `image` at your built tag, or use `build` with `dockerfile: Dockerfile.openclaw`. Do not rely on the stock `webtop` image alone; it will not include this repo’s templates and agent service.
 * **Standalone WebTop**: if you do not use ClawManager batch features, you can skip the ClawManager-specific steps in the advanced flow.
 
 ---

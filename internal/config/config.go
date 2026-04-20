@@ -28,11 +28,18 @@ type Config struct {
 	LocalHTTPBind             string        `yaml:"local_http_bind"`
 	LogFilePath               string        `yaml:"log_file_path"`
 	OpenClawCommand           []string      `yaml:"openclaw_command"`
-	OpenClawConfigPath        string        `yaml:"openclaw_config_path"`
-	OpenClawWorkspacePath     string        `yaml:"openclaw_workspace_path"`
-	OpenClawSkillsPath        string        `yaml:"openclaw_skills_path"`
-	OpenClawBuiltinSkillsPath string        `yaml:"openclaw_builtin_skills_path"`
-	OpenClawHealthURL         string        `yaml:"openclaw_health_url"`
+	OpenClawConfigPath           string `yaml:"openclaw_config_path"`
+	OpenClawWorkspacePath        string `yaml:"openclaw_workspace_path"`
+	OpenClawSkillsPath           string `yaml:"openclaw_skills_path"`
+	OpenClawBuiltinSkillsPath    string `yaml:"openclaw_builtin_skills_path"`
+	OpenClawHealthURL            string `yaml:"openclaw_health_url"`
+	OpenClawDefaultsDir          string `yaml:"openclaw_defaults_dir"`
+	AutostartDefaultsDir         string `yaml:"autostart_defaults_dir"`
+	AutostartTargetDir           string `yaml:"autostart_target_dir"`
+	OpenClawExtensionsDir        string `yaml:"openclaw_extensions_dir"`
+	OpenClawBundledExtensionsDir string `yaml:"openclaw_bundled_extensions_dir"`
+	InstalledPluginPathPrefix    string `yaml:"installed_plugin_path_prefix"`
+	DropUserName                 string `yaml:"drop_user_name"`
 	HeartbeatInterval         time.Duration `yaml:"-"`
 	StateReportInterval       time.Duration `yaml:"-"`
 	CommandPollInterval       time.Duration `yaml:"-"`
@@ -63,8 +70,15 @@ func Load() (Config, error) {
 		OpenClawConfigPath:        "/config/.openclaw/openclaw.json",
 		OpenClawWorkspacePath:     "/config/.openclaw/workspace",
 		OpenClawSkillsPath:        "/config/.openclaw/workspace/skills",
-		OpenClawBuiltinSkillsPath: "/usr/lib/node_modules/openclaw/skills",
-		OpenClawHealthURL:         "http://127.0.0.1:18789/health",
+		OpenClawBuiltinSkillsPath:    "/usr/lib/node_modules/openclaw/skills",
+		OpenClawHealthURL:            "http://127.0.0.1:18789/health",
+		OpenClawDefaultsDir:          "/defaults/.openclaw",
+		AutostartDefaultsDir:         "/defaults/.config/autostart",
+		AutostartTargetDir:           "/config/.config/autostart",
+		OpenClawExtensionsDir:        "/config/.openclaw/extensions",
+		OpenClawBundledExtensionsDir: "/usr/local/lib/node_modules/openclaw/dist/extensions",
+		InstalledPluginPathPrefix:    "/defaults/.openclaw/extensions/",
+		DropUserName:                 "abc",
 		HeartbeatIntervalRaw:      "15s",
 		StateReportIntervalRaw:    "45s",
 		CommandPollIntervalRaw:    "5s",
@@ -99,6 +113,13 @@ func Load() (Config, error) {
 	overrideStringAny(&cfg.OpenClawSkillsPath, "OPENCLAW_AGENT_OPENCLAW_SKILLS_PATH")
 	overrideStringAny(&cfg.OpenClawBuiltinSkillsPath, "OPENCLAW_AGENT_OPENCLAW_BUILTIN_SKILLS_PATH")
 	overrideStringAny(&cfg.OpenClawHealthURL, "OPENCLAW_AGENT_OPENCLAW_HEALTH_URL")
+	overrideStringAny(&cfg.OpenClawDefaultsDir, "OPENCLAW_AGENT_OPENCLAW_DEFAULTS_DIR")
+	overrideStringAny(&cfg.AutostartDefaultsDir, "OPENCLAW_AGENT_AUTOSTART_DEFAULTS_DIR")
+	overrideStringAny(&cfg.AutostartTargetDir, "OPENCLAW_AGENT_AUTOSTART_TARGET_DIR")
+	overrideStringAny(&cfg.OpenClawExtensionsDir, "OPENCLAW_AGENT_OPENCLAW_EXTENSIONS_DIR")
+	overrideStringAny(&cfg.OpenClawBundledExtensionsDir, "OPENCLAW_AGENT_OPENCLAW_BUNDLED_EXTENSIONS_DIR")
+	overrideStringAny(&cfg.InstalledPluginPathPrefix, "OPENCLAW_AGENT_INSTALLED_PLUGIN_PATH_PREFIX")
+	overrideStringAny(&cfg.DropUserName, "OPENCLAW_AGENT_DROP_USER_NAME")
 	overrideStringAny(&cfg.HeartbeatIntervalRaw, "OPENCLAW_AGENT_HEARTBEAT_INTERVAL")
 	overrideStringAny(&cfg.StateReportIntervalRaw, "OPENCLAW_AGENT_STATE_REPORT_INTERVAL")
 	overrideStringAny(&cfg.CommandPollIntervalRaw, "OPENCLAW_AGENT_COMMAND_POLL_INTERVAL")
@@ -171,6 +192,11 @@ func Load() (Config, error) {
 	cfg.OpenClawWorkspacePath = filepath.Clean(cfg.OpenClawWorkspacePath)
 	cfg.OpenClawSkillsPath = filepath.Clean(cfg.OpenClawSkillsPath)
 	cfg.OpenClawBuiltinSkillsPath = filepath.Clean(cfg.OpenClawBuiltinSkillsPath)
+	cfg.OpenClawDefaultsDir = filepath.Clean(cfg.OpenClawDefaultsDir)
+	cfg.AutostartDefaultsDir = filepath.Clean(cfg.AutostartDefaultsDir)
+	cfg.AutostartTargetDir = filepath.Clean(cfg.AutostartTargetDir)
+	cfg.OpenClawExtensionsDir = filepath.Clean(cfg.OpenClawExtensionsDir)
+	cfg.OpenClawBundledExtensionsDir = filepath.Clean(cfg.OpenClawBundledExtensionsDir)
 	return cfg, nil
 }
 
