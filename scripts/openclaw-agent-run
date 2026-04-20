@@ -14,22 +14,8 @@ if [ ! -f "$AGENT_CONFIG_FILE" ]; then
   cp /defaults/openclaw-agent/config.yaml "$AGENT_CONFIG_FILE"
 fi
 
-# Prepare the agent's own runtime paths before dropping privileges to abc.
 chown -R "$AGENT_USER:$AGENT_USER" "$AGENT_DATA_DIR" "$AGENT_LOG_DIR" "$AGENT_CONFIG_DIR"
 chmod 0755 "$AGENT_DATA_DIR" "$AGENT_LOG_DIR" "$AGENT_CONFIG_DIR"
 chmod 0644 "$AGENT_CONFIG_FILE"
 
-if command -v s6-setuidgid >/dev/null 2>&1; then
-  exec s6-setuidgid "$AGENT_USER" "$AGENT_BIN"
-fi
-
-if command -v su-exec >/dev/null 2>&1; then
-  exec su-exec "$AGENT_USER" "$AGENT_BIN"
-fi
-
-if command -v gosu >/dev/null 2>&1; then
-  exec gosu "$AGENT_USER" "$AGENT_BIN"
-fi
-
-echo "openclaw-agent: no supported privilege drop tool found" >&2
-exit 1
+exec "$AGENT_BIN"

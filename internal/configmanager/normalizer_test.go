@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"testing"
@@ -24,7 +25,14 @@ func TestNormalizeActiveConfigSupportsGatewayModelList(t *testing.T) {
 	t.Setenv("CLAWMANAGER_LLM_BASE_URL", "https://gateway.example/v1")
 	t.Setenv("CLAWMANAGER_LLM_API_KEY", "")
 
-	manager := New(appconfig.Config{OpenClawConfigPath: configPath}, nil, nil)
+	bundledDir := t.TempDir()
+	userDir := t.TempDir()
+	manager := New(appconfig.Config{
+		OpenClawConfigPath:           configPath,
+		OpenClawBundledExtensionsDir: bundledDir,
+		OpenClawExtensionsDir:        userDir,
+		InstalledPluginPathPrefix:    "/does-not-exist/",
+	}, nil, nil)
 	if err := manager.NormalizeActiveConfig(); err != nil {
 		t.Fatal(err)
 	}
@@ -78,8 +86,11 @@ func TestApplyRevisionKeepsSingleModelCompatibility(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "")
 
 	manager := New(appconfig.Config{
-		AgentDataDir:       filepath.Join(root, "agent-data"),
-		OpenClawConfigPath: configPath,
+		AgentDataDir:                 filepath.Join(root, "agent-data"),
+		OpenClawConfigPath:           configPath,
+		OpenClawBundledExtensionsDir: t.TempDir(),
+		OpenClawExtensionsDir:        t.TempDir(),
+		InstalledPluginPathPrefix:    "/does-not-exist/",
 	}, stubRevisionClient{
 		resp: protocol.ConfigRevisionResponse{
 			Content: []byte(sampleOpenClawConfig),
@@ -115,6 +126,97 @@ func TestApplyRevisionKeepsSingleModelCompatibility(t *testing.T) {
 	expectedKeys := []string{"auto/gpt-4.1"}
 	if !equalStringSlices(gotKeys, expectedKeys) {
 		t.Fatalf("unexpected agent models keys: got %v want %v", gotKeys, expectedKeys)
+	}
+}
+
+func TestChannelsMergeRejectsUnknownIds(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "openclaw.json")
+	bundledDir := filepath.Join(root, "bundled-extensions")
+	userDir := filepath.Join(root, "user-extensions")
+
+	if err := os.MkdirAll(filepath.Join(bundledDir, "dingtalk-plugin"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	manifest := []byte(`{"channels":["dingtalk"]}`)
+	if err := os.WriteFile(filepath.Join(bundledDir, "dingtalk-plugin", "openclaw.plugin.json"), manifest, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(configPath, []byte(sampleOpenClawConfig), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("CLAWMANAGER_OPENCLAW_CHANNELS_JSON", `{"dingtalk":{"enabled":true},"slack":{"enabled":true}}`)
+	t.Setenv("CLAWMANAGER_LLM_MODEL", "")
+	t.Setenv("CLAWMANAGER_LLM_BASE_URL", "")
+	os.Unsetenv("CLAWMANAGER_LLM_API_KEY")
+	os.Unsetenv("OPENAI_API_KEY")
+
+	manager := New(appconfig.Config{
+		OpenClawConfigPath:           configPath,
+		OpenClawBundledExtensionsDir: bundledDir,
+		OpenClawExtensionsDir:        userDir,
+	}, nil, nil)
+	if err := manager.NormalizeActiveConfig(); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := readConfigForTest(t, configPath)
+	channels := nestedMapForTest(t, cfg, "channels")
+	if _, ok := channels["dingtalk"]; !ok {
+		t.Fatalf("expected dingtalk channel to be preserved, got %#v", channels)
+	}
+	if _, ok := channels["slack"]; ok {
+		t.Fatalf("expected unsupported slack channel to be dropped, got %#v", channels)
+	}
+}
+
+func TestPluginInstallPathRewritten(t *testing.T) {
+	root := t.TempDir()
+	configPath := filepath.Join(root, "openclaw.json")
+	userDir := "/config/.openclaw/extensions"
+
+	sample := `{
+		"plugins": {
+			"installs": {
+				"foo": {
+					"installPath": "/defaults/.openclaw/extensions/foo"
+				},
+				"bar": {
+					"installPath": "/opt/vendor/bar"
+				}
+			}
+		}
+	}`
+	if err := os.WriteFile(configPath, []byte(sample), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	os.Unsetenv("CLAWMANAGER_OPENCLAW_CHANNELS_JSON")
+	os.Unsetenv("CLAWMANAGER_LLM_MODEL")
+	os.Unsetenv("CLAWMANAGER_LLM_BASE_URL")
+	os.Unsetenv("CLAWMANAGER_LLM_API_KEY")
+	os.Unsetenv("OPENAI_API_KEY")
+
+	manager := New(appconfig.Config{
+		OpenClawConfigPath:        configPath,
+		OpenClawExtensionsDir:     userDir,
+		InstalledPluginPathPrefix: "/defaults/.openclaw/extensions/",
+	}, nil, nil)
+	if err := manager.NormalizeActiveConfig(); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := readConfigForTest(t, configPath)
+	installs := nestedMapForTest(t, cfg, "plugins", "installs")
+	foo, _ := installs["foo"].(map[string]any)
+	bar, _ := installs["bar"].(map[string]any)
+	wantFoo := path.Join(userDir, "foo")
+	if got, _ := foo["installPath"].(string); got != wantFoo {
+		t.Fatalf("expected foo installPath to be rewritten to %q, got %q", wantFoo, got)
+	}
+	if got, _ := bar["installPath"].(string); got != "/opt/vendor/bar" {
+		t.Fatalf("expected bar installPath to be untouched, got %q", got)
 	}
 }
 

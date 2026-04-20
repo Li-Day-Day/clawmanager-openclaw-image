@@ -22,14 +22,14 @@
 在 ClawManager 批量管理场景下，逐台手动配置容器不可扩展。本项目提供：
 
 * **预装运行环境**：Node.js 与最新 OpenClaw CLI，开箱即用。
-* **配置同步**：通过 `custom-cont-init.d`，新容器启动时从 `/defaults` 恢复模板。
+* **Agent 驱动启动**：容器启动时，`openclaw-agent`（Go 实现）以 root 身份运行，从 `/defaults/.openclaw` 同步到 `/config/.openclaw`、规范化 channels、修正归属权，然后降权到 `abc` 再派生 OpenClaw 进程。
 * **动态注入**：用环境变量更新 `openclaw.json`，无需在桌面会话里手改文件。
 
 ---
 
 ## 快速开始（推荐）
 
-镜像基于 `lscr.io/linuxserver/webtop:ubuntu-xfce`：Dockerfile 会安装 Node.js 与全局 OpenClaw，写入 `/defaults/.openclaw`，并将 `scripts/99-openclaw-sync` 安装到 `/custom-cont-init.d/`（在**每次容器启动**时执行，而非 `docker build` 时）。运行时配置位于 **`/config/.openclaw`**，而非 `~/.openclaw`。启动后可在容器日志中查找 `[OpenClaw]` 相关输出。
+镜像基于 `lscr.io/linuxserver/webtop:ubuntu-xfce`：Dockerfile 会安装 Node.js 与全局 OpenClaw，写入 `/defaults/.openclaw`，并将 `openclaw-agent` 二进制安装为 s6 服务。每次容器启动时，agent 会完成所有 bootstrap 工作（defaults 同步、extensions 目录、XFCE autostart、配置规范化、channels 合并），然后降权到 `abc` 再派生 `openclaw gateway run`。运行时配置位于 **`/config/.openclaw`**，而非 `~/.openclaw`。启动后可在容器日志中查找 `openclaw-agent` 相关输出。
 
 ### 构建
 
@@ -73,7 +73,7 @@ docker run -d \
 | ---------------------------- | ---------------------------------------- | ------------------------------------------------------------------------- |
 | `CLAWMANAGER_LLM_BASE_URL` | `models.providers.auto.baseUrl`        | 网关或上游 Base URL                                                       |
 | `CLAWMANAGER_LLM_API_KEY`  | `apiKey`                               | 模型 API 密钥                                                             |
-| `CLAWMANAGER_LLM_MODEL`    | `primary` / `agents.defaults.models` | 模型 ID 替换；`auto/` 的处理与 `99-openclaw-sync` 中 `sed` 逻辑一致 |
+| `CLAWMANAGER_LLM_MODEL`    | `primary` / `agents.defaults.models` | 模型 ID 替换；支持单值或 JSON 数组；由 agent 的配置规范化器统一处理 |
 | `CLAWMANAGER_OPENCLAW_CHANNELS_JSON` | `channels`（合并）                     | JSON 对象，可含一个或多个通道键（`feishu`、`slack` 等）；与已有 `channels` 做浅合并；解析失败时容器初始化失败 |
 | `OPENCLAW_AGENT_INSTANCE_ID` | agent 启动参数                           | 必填。实例唯一 ID，用于 `/api/v1/agent/register` |
 | `OPENCLAW_AGENT_BOOTSTRAP_TOKEN` | agent 启动参数                      | 必填。agent 注册使用的 bootstrap token |
@@ -138,7 +138,7 @@ sudo npm install -g openclaw@latest
 ### 初始化脚本与清理
 
 1. **写入默认模板**：`cp -rp /config/.openclaw /defaults/`。
-2. **安装钩子**：将可执行的 `99-openclaw-sync` 放到 `/custom-cont-init.d/`（可从本仓库的 `scripts/99-openclaw-sync` 起步），负责从 `/defaults` 同步到 `/config` 并按环境变量修改。
+2. **安装 agent**：将编译好的 `openclaw-agent` 二进制放到 `/usr/local/bin/`，并把 `scripts/openclaw-agent-run` / `openclaw-agent-finish` 放到 `/etc/services.d/openclaw-agent/`。agent 会在每次启动时完成 `/defaults` → `/config` 同步与环境变量写入。
 3. **保存镜像前清理**：`rm -rf /config/.openclaw`。若跳过此步，新容器可能无法按预期执行首次启动初始化。
 
 ### 保存镜像
@@ -153,9 +153,8 @@ docker commit webtop-running openclaw:v1.0
 
 ## 说明
 
-* **行尾**：`99-openclaw-sync` 须使用 **LF**。在 Windows 上请转换行尾，或依赖 `Dockerfile.openclaw` 中的 `sed` 去除 `\r`。修改脚本后请重新构建镜像。
-* **权限**：脚本会执行 `chown -R abc:abc`，保证默认用户可读写持久化配置。
-* **Docker Compose**：将 `image` 指向您构建的标签，或使用 `build` 且指定 `dockerfile: Dockerfile.openclaw`。不要仅依赖官方 `webtop` 镜像，其中不包含本仓库模板与初始化脚本。
+* **权限**：agent 会在降权前对 `/config/.openclaw` 与 `/config/.config/autostart` 执行 `chown -R abc:abc`，保证默认用户可读写持久化配置。
+* **Docker Compose**：将 `image` 指向您构建的标签，或使用 `build` 且指定 `dockerfile: Dockerfile.openclaw`。不要仅依赖官方 `webtop` 镜像，其中不包含本仓库的模板与 agent 服务。
 * **单独使用 WebTop**：若不使用 ClawManager 批量能力，可跳过进阶流程中与 ClawManager 相关的步骤。
 
 ---
